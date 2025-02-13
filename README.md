@@ -1,20 +1,23 @@
 ﻿
-# [ArgParser](https://www.powershellgallery.com/packages/ArgParser)
+# [argparser](https://www.powershellgallery.com/packages/ArgParser)
 
-🔥 Blazingly fast PowerShell thingy that stonks up your terminal game.
+A module for effortlessly parsing command-line arguments and building type-safe command-line apps.
 
 ## Usage
 
 ```PowerShell
 Install-Module ArgParser
-```
 
-then
-
-```PowerShell
+# then
 Import-Module ArgParser
 # do stuff here.
 ```
+
+## FAQ
+
+**`But Why?`**
+
+⤷ Parametersets are cool but sometimes you may want your script to behave more like an og command-line app.
 
 ## License
 
