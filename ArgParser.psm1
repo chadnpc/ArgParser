@@ -95,16 +95,10 @@ $TypeAcceleratorsClass = [PsObject].Assembly.GetType('System.Management.Automati
 foreach ($Type in $typestoExport) {
   if ($Type.FullName -in $TypeAcceleratorsClass::Get.Keys) {
     $Message = @(
+      "InvalidOperation : TypeAcceleratorAlreadyExists"
       "Unable to register type accelerator '$($Type.FullName)'"
-      'Accelerator already exists.'
     ) -join ' - '
-
-    [System.Management.Automation.ErrorRecord]::new(
-      [System.InvalidOperationException]::new($Message),
-      'TypeAcceleratorAlreadyExists',
-      [System.Management.Automation.ErrorCategory]::InvalidOperation,
-      $Type.FullName
-    ) | Write-Warning
+    $Message | Write-Warning
   }
 }
 # Add type accelerators for every exportable type.
