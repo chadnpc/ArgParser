@@ -1,5 +1,6 @@
 ﻿using namespace System.Reflection
 using namespace System.Collections.Generic
+using namespace System.Management.Automation
 using namespace System.Collections.ObjectModel
 #!/usr/bin/env pwsh
 
@@ -57,30 +58,39 @@ class ParamBase : ParameterInfo {
     return '{0}${1}' -f $($this.IsSwitch ? '[switch]' : '[Parameter()]'), $this.Name
   }
 }
+<#
+.EXAMPLE
+  [ParamSchema]@(
+    ('font', [string], "NotoSansMono-Regular"),
+    ('force', [switch], $false),
+    ('verbose', [switch], $false)
+  )
+#>
 
-class ParamDictionary {
+
+class ParamSchema {
   [bool] $IsReadOnly = $false
   hidden [Dictionary[string, ParamBase]] $_int_d
 
-  ParamDictionary() {
-    [ParamDictionary]::From($null, [ref]$this)
+  ParamSchema() {
+    [ParamSchema]::From($null, [ref]$this)
   }
-  ParamDictionary([Object[]]$params) {
-    [ParamDictionary]::From([ParamBase[]]$params, [ref]$this)
+  ParamSchema([Object[]]$params) {
+    [ParamSchema]::From([ParamBase[]]$params, [ref]$this)
   }
-  ParamDictionary([ParamBase[]]$params) {
-    [ParamDictionary]::From($params, [ref]$this)
+  ParamSchema([ParamBase[]]$params) {
+    [ParamSchema]::From($params, [ref]$this)
   }
-  static [ParamDictionary] Create() {
-    return [ParamDictionary]::new()
+  static [ParamSchema] Create() {
+    return [ParamSchema]::new()
   }
-  static [ParamDictionary] Create([Object[]]$params) {
-    return [ParamDictionary]::Create([ParamBase[]]$params)
+  static [ParamSchema] Create([Object[]]$params) {
+    return [ParamSchema]::Create([ParamBase[]]$params)
   }
-  static [ParamDictionary] Create([ParamBase[]]$params) {
-    return [ParamDictionary]::new($params)
+  static [ParamSchema] Create([ParamBase[]]$params) {
+    return [ParamSchema]::new($params)
   }
-  static hidden [ParamDictionary] From([ParamBase[]]$params, [ref]$ref) {
+  static hidden [ParamSchema] From([ParamBase[]]$params, [ref]$ref) {
     $ref.Value._int_d = [Dictionary[string, ParamBase]]::new()
     $ref.Value.PsObject.Properties.Add([psscriptproperty]::new('Count', { return $this._int_d.Count }, { throw "'Count' is a ReadOnly property." }))
     $ref.Value.PsObject.Properties.Add([psscriptproperty]::new('Keys', { return [System.Collections.Generic.ICollection[string]]$this._int_d.Keys }), { throw "'Keys' is a ReadOnly property." })
@@ -108,6 +118,9 @@ class ParamDictionary {
   }
   [bool] TryGetValue([string]$key, [ref]$value) {
     return $this._int_d.TryGetValue($key, [ref]$value)
+  }
+  [Dictionary[string, ParamBase]] ToDictionary() {
+    return $this._int_d
   }
   [void] CopyTo([KeyValuePair[string, ParamBase][]] $array, [int] $arrayIndex) {
     $index = $arrayIndex
@@ -142,106 +155,94 @@ class ParamDictionary {
   }
 }
 
-<#
-.SYNOPSIS
-  ArgParser takes an array of command-line arguments and parses them according to the parameters specified using AddParameter. returns a dictionary containing the parsed values.
-.EXAMPLE
-  $argvr = '--format=gnu -f --quoting-style=escape --rmt-command=/usr/lib/tar/rmt -delete-key=2 --filter name1 name2'.Split(' ')
-  $list = [ArgParser]::Parse($argvr, [ParamDictionary]@(
-      ('f', [switch], $false),
-      ('format', [string], $false),
-      ('rmt-command', [String], ''),
-      ('quoting-style', [String], ''),
-      ('delete-key', [int[]], $null),
-      ('filter', [String[]], $null)
-    )
-  )
-#>
-class ArgParser {
-  ArgParser() {}
+class ParsedArg {
+  [string] $Name
+  [bool] $IsKnown
+  [bool] $IsArray
+  [bool] $IsSwitch
+  [bool] $HasEqualSign
+  [Object] $DefaultValue
+  [Type] $ParameterType
+  ParsedArg() {}
+  ParsedArg([Hashtable]$Object) {
+    $Object.Keys.ForEach({ $this.$_ = $Object[$_] })
+  }
+}
 
-  static [Dictionary[String, ParamBase]] Parse([string[]]$argvr, [ParamDictionary]$BaseDictionary) {
-    [ValidateNotNullOrEmpty()][ParamDictionary]$BaseDictionary = $BaseDictionary
+
+class ArgParser {
+  [ValidateNotNullOrEmpty()][ParamSchema]$schema
+
+  ArgParser([Object[]]$schema) {
+    $this.schema = [ParamSchema]::Create($schema)
+  }
+  ArgParser([ParamSchema]$schema) { $this.schema = $schema }
+
+  [Dictionary[String, ParamBase]] Parse([string[]]$argvr) {
     [ValidateNotNullOrEmpty()][string[]]$argvr = $argvr
-    $paramDict = [ParamDictionary]::new()
-    for ($i = 0; $i -lt $argvr.Count; $i++) {
-      $arg = $argvr[$i]; ($name, $IsParam) = switch ($true) {
-        $arg.StartsWith('--') { $arg.Substring(2), $true; break }
-        $arg.StartsWith('-') { $arg.Substring(1), $true; break }
-        Default { $arg, $false }
-      }
-      if ($IsParam) {
-        $has_eq = $name.Contains('=')
-        if ($has_eq) { $name = $name.Substring(0, $name.IndexOf('=')) }
-        $bParam_Index = $BaseDictionary.Keys.Where({ $_ -match $name })
-        $IsKnownParam = $null -ne $bParam_Index; $Param = $IsKnownParam ? $BaseDictionary.get_Item($name) : $null
-        $IsKnownParam = $null -ne $Param
-        if ($IsKnownParam) {
-          if (!$has_eq) {
-            $i++; $argVal = $argvr[$i]
-            if ($Param.ParameterType.IsArray) {
-              $arr = [System.Collections.Generic.List[Object]]::new()
-              while ($i -lt $argvr.Count -and !$argvr[$i].StartsWith('-')) {
-                $arr.Add($argVal); $i++; $argVal = $argvr[$i]
-              }
-              $paramDict.Add($name, [ParamBase]::New($name, $Param.ParameterType, $($arr.ToArray() -as $Param.ParameterType)))
-            } else {
-              $paramDict.Add($name, [ParamBase]::New($name, $Param.ParameterType, $argVal))
-            }
-          } else {
-            $i++; $argVal = $name.Substring($name.IndexOf('=') + 1)
-            $paramDict.Add($name, [ParamBase]::New($name, $Param.ParameterType, $argVal))
-          }
-        } else { Write-Warning "[ArgParser] : Unknown parameter: $name" }
+    $rsltchema = [ParamSchema]::new()
+    $argvr_map = @{}; for ($i = 0; $i -lt $argvr.Count; $i++) {
+      $name = $argvr[$i]
+      $name = $name.TrimStart('-')
+      $HasEqualSign = $name.Contains('=')
+
+      $name = $HasEqualSign ? $name.Substring(0, $name.IndexOf('=')) : $name
+      $scpv = $this.schema.get_Item($name)
+      $Is_known_key = $this.schema.ContainsKey($name)
+      $Is_Array = $Is_known_key ? $scpv.ParameterType.IsArray : $false
+      $argvr_map[$i] = [ParsedArg]@{
+        Name          = $name
+        IsKnown       = $Is_known_key
+        IsArray       = $Is_Array
+        IsSwitch      = $Is_known_key ? $scpv.IsSwitch : $false
+        DefaultValue  = $Is_known_key ? $scpv.DefaultValue : $null
+        HasEqualSign  = $HasEqualSign
+        ParameterType = $Is_known_key ? $scpv.ParameterType : $($Is_Array ? [string[]] : [string])
       }
     }
-    return $paramDict._int_d
+    $argvalues = $argvr_map.Values.Where({ $_.IsKnown })
+    if ($argvalues.Count -gt 0) {
+      foreach ($item in $argvalues) {
+        $rsltchema.Add($item.Name, [ParamBase]::New($item.Name, $item.ParameterType, [ArgParser]::get_value($item.Name, $argvr_map, $argvr)))
+      }
+    }
+    return $rsltchema.ToDictionary()
   }
-  static [System.Collections.Generic.Dictionary[String, ParamBase]] Parse([string[]]$argvr, [System.Collections.Generic.Dictionary[System.Management.Automation.ParameterMetadata, object]]$ParamBase) {
-    $BaseDictionary = [System.Collections.Generic.Dictionary[String, ParamBase]]::New(); $ParamBase.Keys | ForEach-Object { $BaseDictionary.Add($_.Name, [ParamBase]::new($_.Name, $_.ParameterType, $ParamBase[$_])) }
-    return [ArgParser]::Parse($argvr, $BaseDictionary)
+  [Dictionary[String, ParamBase]] Parse([string[]]$argvr, [Dictionary[ParameterMetadata, object]]$ParamBase) {
+    $_schema = [Dictionary[String, ParamBase]]::New(); $ParamBase.Keys | ForEach-Object {
+      $_schema.Add($_.Name, [ParamBase]::new($_.Name, $_.ParameterType, $ParamBase[$_]))
+    }
+    return $this.Parse($argvr, $_schema)
+  }
+  static [Object] get_value([string]$Name, [hashtable]$argvr_map, [string[]]$arg_array) {
+    $value = $null; $i = 0; do {
+      $value = switch ($true) {
+        $($argvr_map[$i].HasEqualSign -and !$argvr_map[$i].IsArray) {
+          $arg_array[$i].Substring($arg_array[$i].IndexOf('=') + 1); $i++
+          break
+        }
+        Default {
+          $_values = [List[Object]]::new(); while (!$arg_array[$i].StartsWith('-') -and $i -lt $arg_array.Count) {
+            $_values.Add($($argvr_map[$i].HasEqualSign ? $arg_array[$i].Substring($argvr_map[$i].IndexOf('=') + 1) : $arg_array[$i])); $i++;
+          }
+          $_values.ToArray() -as $argvr_map[$i].ParameterType
+        }
+      }
+    } until ($null -ne $value -or $i -ge $arg_array.Count)
+    $result = ($null -eq $value) ? $argvr_map[$i].DefaultValue : $value
+    Write-Verbose "value: $result"
+    return $result
   }
   # A method to convert parameter names from their command-line format (using dashes) to their property name format (using PascalCase).
-  static hidden [string] MungeName([string]$name) {
+  static [string] MungeName([string]$name) {
     return [string]::Join('', ($name.Split('-') | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }))
   }
 }
 
-# $stream = @('str', 'eam', 'mm');
-# $filter = @('ffffil', 'llll', 'tttr', 'rrr');
-# $excludestr = @('sss', 'ddd', 'ggg', 'hhh');
-# $dkey = [consolekey]::S;
-# $argvr = '--format=gnu -f- -b20 --quoting-style=escape --rmt-command=/usr/lib/tar/rmt -DeleteKey [consolekey]$dkey -Exclude [string[]]$excludestr -Filter [string[]]$filter -Force -Include [string[]]$IncludeStr -Recurse -Stream [string[]]$stream -Confirm -WhatIf'.Split(' ')
-
-class argvtest {
-
-  hidden [System.Collections.Generic.Dictionary[String, ParamBase]] ParseArgs([string[]]$argv) {
-    $ParsedArgs = $null;
-    $BaseDictionary = [System.Collections.Generic.Dictionary[String, ParamBase]]::new()
-    # Set default types and values for parameter Ex: packages is expected to be string[] and its default value is $null.
-    @(
-      ('Force', [System.Management.Automation.SwitchParameter], $null),
-      ('WhatIf', [System.Management.Automation.SwitchParameter], $null),
-      ('Exclude', [System.String[]], $null),
-      ('Include', [System.String[]], $null),
-      ('LiteralPath', [System.String[]], $null)
-    )
-    try {
-      $parsedArgs = [ArgParser]::Parse($argv, $BaseDictionary)
-    } catch {
-      throw [System.Management.Automation.ParseException]::new('Failed to parse arguments', $_)
-    }
-    $ComndName = [string](Get-Variable MyInvocation).value.MyCommand.Name
-    if ($ComndName -in $parsedArgs['packages']) { $parsedArgs['packages'].Remove($ComndName) }
-    #dotfilePaths: An array or list of all dotfile paths managed by the app.
-    $this.PsObject.properties.add([psscriptproperty]::new('dotfilePaths', [scriptblock]::Create('$dirs = [System.Collections.Generic.IEnumerable[string]]::new(); foreach ($packageName in $this.args["packages"]) { [void]$dirs.add([IO.Path]::Combine($this.args["source"], $packageName)) }; return $dirs')))
-    return $ParsedArgs
-  }
-}
 #endregion Classes
 # Types that will be available to users when they import the module.
 $typestoExport = @(
-  [ArgParser], [ParamBase], [ParamDictionary]
+  [ArgParser], [ParamBase], [ParsedArg], [ParamSchema]
 )
 $TypeAcceleratorsClass = [PsObject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
 foreach ($Type in $typestoExport) {
