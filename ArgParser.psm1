@@ -170,7 +170,7 @@ class ParamSchema {
 
 class ArgParser {
   hidden [Parsedarg[]]$INFERRED
-  hidden [version]$VERSION = [version]'0.1.0'
+  hidden [version]$VERSION = [version]'0.1.1'
   hidden [ValidateNotNullOrEmpty()][ParamSchema]$schema
   hidden [KeyValuePair[String, Parsedarg][]]$_map = @()
   hidden [ValidateNotNullOrEmpty()][string[]]$_array
@@ -182,13 +182,13 @@ class ArgParser {
   ArgParser([ParamSchema]$schema) { $this.schema = $schema }
 
   [Dictionary[String, ParamBase]] Parse([string[]]$argumentlist) {
-    $result = [ParamSchema]::new(); $this.read_list($argumentlist);
+    $result = [Dictionary[String, ParamBase]]::New(); [void]$this.read_list($argumentlist);
     if ($this.INFERRED.Count -gt 0) {
       foreach ($item in $this.INFERRED) {
         $result.Add($item.Name, [ParamBase]::New($item.Name, $item.ParameterType, $this.get_value($item.Name)))
       }
     }
-    return $result.ToDictionary()
+    return $result
   }
   [Dictionary[String, ParamBase]] Parse([string[]]$argumentlist, [Dictionary[ParameterMetadata, object]]$metadata) {
     $_schema = [Dictionary[String, ParamBase]]::New(); $metadata.Keys.ForEach({ $_schema.Add($_.Name, [ParamBase]::new($_.Name, $_.ParameterType, $metadata[$_])) })
@@ -245,7 +245,7 @@ class ArgParser {
         }
       )
     }
-    $this.INFERRED = $this._map.Value.Where({ $_.IsKnown })
+    $this.INFERRED = $this._map.Value.Where({ $_.IsKnown }) | Select-Object * -Exclude IsKnown | Sort-Object -Unique Index
   }
   [string] MungeName([string]$name) {
     # converts parameter names from their command-line format (using dashes) to their property name format.

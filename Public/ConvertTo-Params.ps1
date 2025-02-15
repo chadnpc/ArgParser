@@ -8,39 +8,31 @@
   .OUTPUTS
     System.Collections.Generic.Dictionary[string,ParamBase]
   .EXAMPLE
-    $line = '--format=gnu -f --quoting-style=escape --rmt-command=/usr/lib/tar/rmt -delete-key=2 --filter name1 name2'
-    $list = $line.Split(' ')
-    $schema = @(
-      ('f', [switch], $false),
-      ('format', [string], $false),
-      ('rmt-command', [String], ''),
-      ('quoting-style', [String], ''),
-      ('delete-key', [bool], $true),
-      ('filter', [String[]], $null)
+    $line = '--verbose -t 30 --retry=5 --output=log.txt --include=*.txt *.csv'
+    $list = $line -split ' '
+
+    ConvertTo-Params $list @(
+      ('verbose', [switch], $false),
+      ('t', [int], 0),
+      ('retry', [int], 3),
+      ('output', [string], 'output.log'),
+      ('include', [string[]], @())
     )
-    $parser = [ArgParser]$schema
-    $parser.read_list($list)
   #>
-  [CmdletBinding(DefaultParameterSetName = 'array')]
+  [CmdletBinding()]
   [OutputType([System.Collections.Generic.Dictionary[string, ParamBase]])]
   param (
-    [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
+    [Parameter(Mandatory = $true, Position = 0)]
     [ValidateNotNullOrEmpty()]
-    [string[]]$argvr,
+    [string[]]$list,
 
-    [Parameter(Mandatory = $true, Position = 1, ParameterSetName = 'array')]
+    [Parameter(Mandatory = $true, Position = 1)]
     [ValidateNotNullOrEmpty()][Alias('ref')]
-    [Object[]]$reference,
-
-    [Parameter(Mandatory = $true, Position = 1, ParameterSetName = 'schema')]
-    [ValidateNotNullOrEmpty()][Alias('s')]
-    [ParamSchema]$schema
+    [Object[]]$reference
   )
-
   process {
-    $parser = [ArgParser](($PSCmdlet.ParameterSetName -eq 'array') ? [ParamSchema]$reference : $schema)
     try {
-      $result = $parser.Parse($argvr)
+      $result = ([ArgParser][ParamSchema]$reference).Parse($list)
     } catch {
       $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ParseException]::new('Failed to parse arguments', $_))
     }

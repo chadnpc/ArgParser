@@ -1,11 +1,11 @@
 ﻿
 @{
   ModuleName    = 'ArgParser'
-  ModuleVersion = [version]'0.1.0'
+  ModuleVersion = [version]'0.1.1'
   ReleaseNotes  = '# Release Notes
 
 - Version_<ModuleVersion>
-- Functions ...
-- Optimizations
+- Functions: ConvertTo-Params
+- Works fine
 '
 }

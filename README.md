@@ -1,5 +1,5 @@
 ﻿
-# [argparser](https://www.powershellgallery.com/packages/ArgParser) -	βeta v0.1.0
+## [argparser](https://www.powershellgallery.com/packages/ArgParser)
 
 A module to parse and convert command-line arguments (strings) into typed parameters.
 
@@ -14,21 +14,45 @@ A module to parse and convert command-line arguments (strings) into typed parame
 ```PowerShell
 Install-Module ArgParser
 
-# then
+# First import the module or add a '#Requires -Modules ArgParser' to ur script:
 Import-Module ArgParser
-# do stuff like:
 
-$line = '--format=gnu -f --quoting-style=escape --rmt-command=/usr/lib/tar/rmt -delete-key=2 --filter name1 name2'
-$list = $line.Split(' ')
-$_out = $list | ConvertTo-Params @(
-  ('f', [switch], $false),
-  ('format', [string], $false),
-  ('rmt-command', [String], ''),
-  ('quoting-style', [String], ''),
-  ('delete-key', [int[]], $null),
-  ('filter', [String[]], $null)
+# then do stuff like:
+$line = '--verbose -t 30 --retry=5 --output=log.txt --include=*.txt *.csv'
+$list = $line -split ' '
+
+# Then run:
+$params = ConvertTo-Params $list @(
+  ('verbose', [switch], $false),
+  ('t', [int], 0),
+  ('retry', [int], 3),
+  ('output', [string], 'output.log'),
+  ('include', [string[]], @())
 )
-$_out
+
+echo $params
+# Results in this dictionary:
+
+Key     Value
+---     -----
+verbose [switch]$verbose
+timeout [Parameter()]$timeout
+retry   [Parameter()]$retry
+output  [Parameter()]$output
+include [Parameter()]$include
+
+# Explore the results more:
+$params['include']
+
+Name             : include
+IsSwitch         : False
+ParameterType    : System.String[]
+DefaultValue     :
+RawDefaultValue  :
+HasDefaultValue  : False
+IsDynamic        : False
+Value            : {*.txt, *.csv}
+.....
 ```
 
 ## License
