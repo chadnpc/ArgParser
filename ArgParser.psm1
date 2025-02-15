@@ -5,6 +5,20 @@ using namespace System.Collections.ObjectModel
 #!/usr/bin/env pwsh
 
 #region    Classes
+class Parsedarg {
+  [int] $Index
+  [string] $Name
+  [bool] $IsKnown
+  [bool] $IsArray
+  [bool] $IsSwitch
+  [bool] $HasEqualSign
+  [Object] $DefaultValue
+  [Type] $ParameterType
+  Parsedarg() {}
+  Parsedarg([Hashtable]$Object) {
+    $Object.Keys.ForEach({ $this.$_ = $Object[$_] })
+  }
+}
 
 class ParamBase : ParameterInfo {
   [bool]$IsDynamic
@@ -16,8 +30,8 @@ class ParamBase : ParameterInfo {
   ParamBase([string]$Name) {
     [void][ParamBase]::From($Name, [System.Management.Automation.SwitchParameter], $null, [ref]$this)
   }
-  ParamBase([Object[]]$array) {
-    [void][ParamBase]::From([string]$array[0], [type]$array[1], [System.Object]$array[2], [ref]$this)
+  ParamBase([Object[]]$argumentlist) {
+    [void][ParamBase]::From([string]$argumentlist[0], [type]$argumentlist[1], [System.Object]$argumentlist[2], [ref]$this)
   }
   ParamBase([string]$Name, [type]$Type) {
     [void][ParamBase]::From($Name, $Type, $null, [ref]$this)
@@ -66,8 +80,6 @@ class ParamBase : ParameterInfo {
     ('verbose', [switch], $false)
   )
 #>
-
-
 class ParamSchema {
   [bool] $IsReadOnly = $false
   hidden [Dictionary[string, ParamBase]] $_int_d
@@ -122,10 +134,10 @@ class ParamSchema {
   [Dictionary[string, ParamBase]] ToDictionary() {
     return $this._int_d
   }
-  [void] CopyTo([KeyValuePair[string, ParamBase][]] $array, [int] $arrayIndex) {
-    $index = $arrayIndex
+  [void] CopyTo([KeyValuePair[string, ParamBase][]] $argumentlist, [int] $argumentlistIndex) {
+    $index = $argumentlistIndex
     foreach ($item in $this._int_d) {
-      $array[$index] = $item
+      $argumentlist[$index] = $item
       $index++
     }
   }
@@ -155,94 +167,100 @@ class ParamSchema {
   }
 }
 
-class ParsedArg {
-  [string] $Name
-  [bool] $IsKnown
-  [bool] $IsArray
-  [bool] $IsSwitch
-  [bool] $HasEqualSign
-  [Object] $DefaultValue
-  [Type] $ParameterType
-  ParsedArg() {}
-  ParsedArg([Hashtable]$Object) {
-    $Object.Keys.ForEach({ $this.$_ = $Object[$_] })
-  }
-}
-
 
 class ArgParser {
-  [ValidateNotNullOrEmpty()][ParamSchema]$schema
+  hidden [Parsedarg[]]$INFERRED
+  hidden [version]$VERSION = [version]'0.1.0'
+  hidden [ValidateNotNullOrEmpty()][ParamSchema]$schema
+  hidden [KeyValuePair[String, Parsedarg][]]$_map = @()
+  hidden [ValidateNotNullOrEmpty()][string[]]$_array
+  hidden [int]$ci = 0
 
   ArgParser([Object[]]$schema) {
     $this.schema = [ParamSchema]::Create($schema)
   }
   ArgParser([ParamSchema]$schema) { $this.schema = $schema }
 
-  [Dictionary[String, ParamBase]] Parse([string[]]$argvr) {
-    [ValidateNotNullOrEmpty()][string[]]$argvr = $argvr
-    $rsltchema = [ParamSchema]::new()
-    $argvr_map = @{}; for ($i = 0; $i -lt $argvr.Count; $i++) {
-      $name = $argvr[$i]
-      $name = $name.TrimStart('-')
-      $HasEqualSign = $name.Contains('=')
-
+  [Dictionary[String, ParamBase]] Parse([string[]]$argumentlist) {
+    $result = [ParamSchema]::new(); $this.read_list($argumentlist);
+    if ($this.INFERRED.Count -gt 0) {
+      foreach ($item in $this.INFERRED) {
+        $result.Add($item.Name, [ParamBase]::New($item.Name, $item.ParameterType, $this.get_value($item.Name)))
+      }
+    }
+    return $result.ToDictionary()
+  }
+  [Dictionary[String, ParamBase]] Parse([string[]]$argumentlist, [Dictionary[ParameterMetadata, object]]$metadata) {
+    $_schema = [Dictionary[String, ParamBase]]::New(); $metadata.Keys.ForEach({ $_schema.Add($_.Name, [ParamBase]::new($_.Name, $_.ParameterType, $metadata[$_])) })
+    return $this.Parse($argumentlist, $_schema)
+  }
+  [Object] get_value([string]$Name) {
+    $value = $null; $done = $false # means we got a value or we just have to stop.
+    $knval = $this.INFERRED.Where({ $_.Name -eq $Name })[0]; $this.ci = $knval.Index
+    do {
+      switch ($true) {
+        $($this._map[$this.ci].Value.HasEqualSign -and !$this._map[$this.ci].Value.IsArray) {
+          $value = $this._array[$this.ci].Substring($this._array[$this.ci].IndexOf('=') + 1);
+          $done = $null -ne $value; if (!$done) { $this.ci++ }
+          break
+        }
+        Default {
+          $_values = @();
+          While (!$done -and $this.ci -lt $this._array.Count) {
+            $_v = $this._array[$this.ci]
+            if ($this._map[$this.ci].Value.HasEqualSign) {
+              $_v = $_v.Substring($_v.IndexOf('=') + 1)
+            }
+            if (!$_v.StartsWith('-')) { $_values += $_v }
+            $next = $this._array[$this.ci + 1]
+            $cont = $next ? !$next.StartsWith('-') : $false
+            $cont ? ($this.ci++) : ($done = $true)
+          }
+          $value = $_values -as $this._map[$knval.Index].Value.ParameterType
+        }
+      }
+      if ($done) { $this.ci = 0 }
+    } until ($done -or $this.ci -ge $this._array.Count)
+    $result = ($null -eq $value) ? $knval.DefaultValue : $value
+    return $result
+  }
+  [void] read_list([string[]]$argumentlist) {
+    $this._array = $argumentlist
+    for ($i = 0; $i -lt $this._array.Count; $i++) {
+      $name = $this._array[$i]
+      $name = $name.TrimStart('-'); $HasEqualSign = $name.Contains('=')
       $name = $HasEqualSign ? $name.Substring(0, $name.IndexOf('=')) : $name
       $scpv = $this.schema.get_Item($name)
       $Is_known_key = $this.schema.ContainsKey($name)
       $Is_Array = $Is_known_key ? $scpv.ParameterType.IsArray : $false
-      $argvr_map[$i] = [ParsedArg]@{
-        Name          = $name
-        IsKnown       = $Is_known_key
-        IsArray       = $Is_Array
-        IsSwitch      = $Is_known_key ? $scpv.IsSwitch : $false
-        DefaultValue  = $Is_known_key ? $scpv.DefaultValue : $null
-        HasEqualSign  = $HasEqualSign
-        ParameterType = $Is_known_key ? $scpv.ParameterType : $($Is_Array ? [string[]] : [string])
-      }
-    }
-    $argvalues = $argvr_map.Values.Where({ $_.IsKnown })
-    if ($argvalues.Count -gt 0) {
-      foreach ($item in $argvalues) {
-        $rsltchema.Add($item.Name, [ParamBase]::New($item.Name, $item.ParameterType, [ArgParser]::get_value($item.Name, $argvr_map, $argvr)))
-      }
-    }
-    return $rsltchema.ToDictionary()
-  }
-  [Dictionary[String, ParamBase]] Parse([string[]]$argvr, [Dictionary[ParameterMetadata, object]]$ParamBase) {
-    $_schema = [Dictionary[String, ParamBase]]::New(); $ParamBase.Keys | ForEach-Object {
-      $_schema.Add($_.Name, [ParamBase]::new($_.Name, $_.ParameterType, $ParamBase[$_]))
-    }
-    return $this.Parse($argvr, $_schema)
-  }
-  static [Object] get_value([string]$Name, [hashtable]$argvr_map, [string[]]$arg_array) {
-    $value = $null; $i = 0; do {
-      $value = switch ($true) {
-        $($argvr_map[$i].HasEqualSign -and !$argvr_map[$i].IsArray) {
-          $arg_array[$i].Substring($arg_array[$i].IndexOf('=') + 1); $i++
-          break
+      $this._map += [KeyValuePair[String, Parsedarg]]::new($i, [Parsedarg]@{
+          Name          = $name
+          Index         = $i
+          IsKnown       = $Is_known_key
+          IsArray       = $Is_Array
+          IsSwitch      = $Is_known_key ? $scpv.IsSwitch : $false
+          DefaultValue  = $Is_known_key ? $scpv.DefaultValue : $null
+          HasEqualSign  = $HasEqualSign
+          ParameterType = $Is_known_key ? $scpv.ParameterType : $($Is_Array ? [string[]] : [string])
         }
-        Default {
-          $_values = [List[Object]]::new(); while (!$arg_array[$i].StartsWith('-') -and $i -lt $arg_array.Count) {
-            $_values.Add($($argvr_map[$i].HasEqualSign ? $arg_array[$i].Substring($argvr_map[$i].IndexOf('=') + 1) : $arg_array[$i])); $i++;
-          }
-          $_values.ToArray() -as $argvr_map[$i].ParameterType
-        }
-      }
-    } until ($null -ne $value -or $i -ge $arg_array.Count)
-    $result = ($null -eq $value) ? $argvr_map[$i].DefaultValue : $value
-    Write-Verbose "value: $result"
-    return $result
+      )
+    }
+    $this.INFERRED = $this._map.Value.Where({ $_.IsKnown })
   }
-  # A method to convert parameter names from their command-line format (using dashes) to their property name format (using PascalCase).
-  static [string] MungeName([string]$name) {
+  [string] MungeName([string]$name) {
+    # converts parameter names from their command-line format (using dashes) to their property name format.
     return [string]::Join('', ($name.Split('-') | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }))
+  }
+  [string] ToString() {
+    return $this.INFERRED ? $this.INFERRED.ToString() : 'ArgParser'
   }
 }
 
 #endregion Classes
+
 # Types that will be available to users when they import the module.
 $typestoExport = @(
-  [ArgParser], [ParamBase], [ParsedArg], [ParamSchema]
+  [ArgParser], [ParamBase], [Parsedarg], [ParamSchema]
 )
 $TypeAcceleratorsClass = [PsObject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
 foreach ($Type in $typestoExport) {
