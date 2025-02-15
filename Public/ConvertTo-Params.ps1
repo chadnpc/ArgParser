@@ -10,7 +10,7 @@
   .EXAMPLE
     $line = '--format=gnu -f --quoting-style=escape --rmt-command=/usr/lib/tar/rmt -delete-key=2 --filter name1 name2'
     $list = $line.Split(' ')
-    $parsed_args = $list | ConvertTo-Params -array @(
+    $schema = @(
       ('f', [switch], $false),
       ('format', [string], $false),
       ('rmt-command', [String], ''),
@@ -18,6 +18,8 @@
       ('delete-key', [bool], $true),
       ('filter', [String[]], $null)
     )
+    $parser = [ArgParser]$schema
+    $parser.read_list($list)
   #>
   [CmdletBinding(DefaultParameterSetName = 'array')]
   [OutputType([System.Collections.Generic.Dictionary[string, ParamBase]])]
@@ -31,13 +33,12 @@
     [Object[]]$reference,
 
     [Parameter(Mandatory = $true, Position = 1, ParameterSetName = 'schema')]
-    [ValidateNotNullOrEmpty()]
+    [ValidateNotNullOrEmpty()][Alias('s')]
     [ParamSchema]$schema
   )
 
   process {
-    $schema = ($PSCmdlet.ParameterSetName -eq 'array') ? [ParamSchema]$reference : $schema
-    $parser = [ArgParser]::new($schema)
+    $parser = [ArgParser](($PSCmdlet.ParameterSetName -eq 'array') ? [ParamSchema]$reference : $schema)
     try {
       $result = $parser.Parse($argvr)
     } catch {
