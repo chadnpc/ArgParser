@@ -90,6 +90,9 @@ class ParamSchema {
   ParamSchema([Object[]]$params) {
     [ParamSchema]::From([ParamBase[]]$params, [ref]$this)
   }
+  ParamSchema([hashtable]$params) {
+    [ParamSchema]::From($params, [ref]$this)
+  }
   ParamSchema([ParamBase[]]$params) {
     [ParamSchema]::From($params, [ref]$this)
   }
@@ -99,16 +102,25 @@ class ParamSchema {
   static [ParamSchema] Create([Object[]]$params) {
     return [ParamSchema]::Create([ParamBase[]]$params)
   }
+  static [ParamSchema] Create([hashtable]$params) {
+    return [ParamSchema]::new($params)
+  }
   static [ParamSchema] Create([ParamBase[]]$params) {
     return [ParamSchema]::new($params)
   }
   static hidden [ParamSchema] From([ParamBase[]]$params, [ref]$ref) {
-    $ref.Value._int_d = [Dictionary[string, ParamBase]]::new()
-    $ref.Value.PsObject.Properties.Add([psscriptproperty]::new('Count', { return $this._int_d.Count }, { throw "'Count' is a ReadOnly property." }))
-    $ref.Value.PsObject.Properties.Add([psscriptproperty]::new('Keys', { return [System.Collections.Generic.ICollection[string]]$this._int_d.Keys }), { throw "'Keys' is a ReadOnly property." })
-    $ref.Value.PsObject.Properties.Add([psscriptproperty]::new('Values', { return [System.Collections.Generic.ICollection[ParamBase]]$this._int_d.Values }, { throw "'Values' is a ReadOnly property." }))
-    $params.ForEach({ $this._int_d.Add($_.Name, $_) })
+    $ref.Value.__init__(); $params.ForEach({ $this._int_d.Add($_.Name, $_) })
     return $ref.Value
+  }
+  static hidden [ParamSchema] From([hashtable]$params, [ref]$ref) {
+    $ref.Value.__init__(); $params.Keys.ForEach({ $this._int_d.Add($_, [ParamBase]::new($_, $params.$_[0], $params.$_[1] ) ) })
+    return $ref.Value
+  }
+  hidden [void] __init__() {
+    $this._int_d = [Dictionary[string, ParamBase]]::new()
+    $this.PsObject.Properties.Add([psscriptproperty]::new('Count', { return $this._int_d.Count }, { throw "'Count' is a ReadOnly property." }))
+    $this.PsObject.Properties.Add([psscriptproperty]::new('Keys', { return [System.Collections.Generic.ICollection[string]]$this._int_d.Keys }), { throw "'Keys' is a ReadOnly property." })
+    $this.PsObject.Properties.Add([psscriptproperty]::new('Values', { return [System.Collections.Generic.ICollection[ParamBase]]$this._int_d.Values }, { throw "'Values' is a ReadOnly property." }))
   }
   [void] Add([string]$key, [ParamBase]$value) {
     $this._int_d.Add($key, $value)
@@ -168,18 +180,18 @@ class ParamSchema {
 }
 
 
-class ArgParser {
+class argparser {
   hidden [Parsedarg[]]$INFERRED
-  hidden [version]$VERSION = [version]'0.1.1'
+  hidden [version]$VERSION = [version]'0.1.2'
   hidden [ValidateNotNullOrEmpty()][ParamSchema]$schema
   hidden [KeyValuePair[String, Parsedarg][]]$_map = @()
   hidden [ValidateNotNullOrEmpty()][string[]]$_array
   hidden [int]$ci = 0
 
-  ArgParser([Object[]]$schema) {
+  argparser([Object[]]$schema) {
     $this.schema = [ParamSchema]::Create($schema)
   }
-  ArgParser([ParamSchema]$schema) { $this.schema = $schema }
+  argparser([ParamSchema]$schema) { $this.schema = $schema }
 
   [Dictionary[String, ParamBase]] Parse([string[]]$argumentlist) {
     $result = [Dictionary[String, ParamBase]]::New(); [void]$this.read_list($argumentlist);
@@ -252,7 +264,7 @@ class ArgParser {
     return [string]::Join('', ($name.Split('-') | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }))
   }
   [string] ToString() {
-    return $this.INFERRED ? $this.INFERRED.ToString() : 'ArgParser'
+    return $this.INFERRED ? $this.INFERRED.ToString() : 'argparser'
   }
 }
 
@@ -260,7 +272,7 @@ class ArgParser {
 
 # Types that will be available to users when they import the module.
 $typestoExport = @(
-  [ArgParser], [ParamBase], [Parsedarg], [ParamSchema]
+  [argparser], [ParamBase], [Parsedarg], [ParamSchema]
 )
 $TypeAcceleratorsClass = [PsObject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
 foreach ($Type in $typestoExport) {

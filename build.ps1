@@ -1,11 +1,11 @@
 ﻿
 #!/usr/bin/env pwsh
 # .SYNOPSIS
-#   ArgParser buildScript v0.1.1
+#   argparser buildScript v0.1.2
 # .DESCRIPTION
-#   A custom build script for the module ArgParser
+#   A custom build script for the module argparser
 # .LINK
-#   https://github.com/alainQtec/ArgParser/blob/main/build.ps1
+#   https://github.com/alainQtec/argparser/blob/main/build.ps1
 # .EXAMPLE
 #   ./build.ps1 -Task Test
 #   This Will build the module, Import it and run tests using the ./Test-Module.ps1 script.

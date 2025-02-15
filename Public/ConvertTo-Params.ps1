@@ -11,6 +11,8 @@
     $line = '--verbose -t 30 --retry=5 --output=log.txt --include=*.txt *.csv'
     $list = $line -split ' '
 
+    # Using a reference object:
+
     ConvertTo-Params $list @(
       ('verbose', [switch], $false),
       ('t', [int], 0),
@@ -18,23 +20,42 @@
       ('output', [string], 'output.log'),
       ('include', [string[]], @())
     )
+    .EXAMPLE
+    # If a reference object is seems ugly to use, here's a more elegant way ..Hashmaps ☻ :
+
+    ConvertTo-Params $list -s @{
+      verbose = [switch], $false
+      t       = [int], 0
+      retry   = [int], 3
+      output  = [string], 'output.log'
+      include = [string[]], @()
+    }
+
+    .NOTES
+    This function works best with command-line arguments that have '=' signs. ex: --keys=value1 value2  (not: --keys value1 value2)
+    -ie: Spaces separated args work, but not always, so just use '=' to be safe.
   #>
-  [CmdletBinding()]
+  [CmdletBinding(DefaultParameterSetName = 'schema')]
   [OutputType([System.Collections.Generic.Dictionary[string, ParamBase]])]
   param (
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateNotNullOrEmpty()]
+    [ValidateNotNullOrEmpty()][Alias('l')]
     [string[]]$list,
 
-    [Parameter(Mandatory = $true, Position = 1)]
-    [ValidateNotNullOrEmpty()][Alias('ref')]
+    [Parameter(Mandatory = $true, Position = 1, ParameterSetName = 'schema')]
+    [ValidateNotNullOrEmpty()][Alias('s')]
+    [hashtable]$schema,
+
+    [Parameter(Mandatory = $true, Position = 1, ParameterSetName = 'reference')]
+    [ValidateNotNullOrEmpty()][Alias('r')]
     [Object[]]$reference
   )
   process {
     try {
-      $result = ([ArgParser][ParamSchema]$reference).Parse($list)
+      $parser = [argparser][ParamSchema](($pscmdlet.ParameterSetName -eq 'schema') ? $schema : $reference)
+      $result = $parser.Parse($list)
     } catch {
-      $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ParseException]::new('Failed to parse arguments', $_))
+      $PSCmdlet.ThrowTerminatingError([System.Management.Automation.ParseException]::new('🛑 Failed to parse arguments', $_.Exception))
     }
   }
 

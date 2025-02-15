@@ -1,5 +1,5 @@
 ﻿
-## [argparser](https://www.powershellgallery.com/packages/ArgParser)
+## [argparser](https://www.powershellgallery.com/packages/argparser)
 
 A module to parse and convert command-line arguments (strings) into typed parameters.
 
@@ -7,28 +7,27 @@ A module to parse and convert command-line arguments (strings) into typed parame
 
 ⤷ Sometimes you want your script to behave more like an og command-line app but with more type-safety powers.
 
-⤷ Parameters are cool.
+⤷ Parameters are cool ✧ (ദ്ദി˙ᗜ˙)
 
 ## Usage
 
 ```PowerShell
-Install-Module ArgParser
+Install-Module argparser
 
-# First import the module or add a '#Requires -Modules ArgParser' to ur script:
-Import-Module ArgParser
+# First import the module or add a '#Requires -Modules argparser' to ur script:
+Import-Module argparser
 
-# then do stuff like:
+# ᯓ✦ then do stuff like:
 $line = '--verbose -t 30 --retry=5 --output=log.txt --include=*.txt *.csv'
 $list = $line -split ' '
 
-# Then run:
-$params = ConvertTo-Params $list @(
-  ('verbose', [switch], $false),
-  ('t', [int], 0),
-  ('retry', [int], 3),
-  ('output', [string], 'output.log'),
-  ('include', [string[]], @())
-)
+$params = ConvertTo-Params $list -schema @{
+  verbose = [switch], $false
+  t       = [int], 0
+  retry   = [int], 3
+  output  = [string], 'output.log'
+  include = [string[]], @()
+}
 
 echo $params
 # Results in this dictionary:

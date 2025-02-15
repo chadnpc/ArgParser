@@ -405,9 +405,9 @@ BuildOutput/
 LocalPSRepo/
 Tests/results.xml
 Tests/Resources/
-Tests/ArgParser.Module.Tests.ps1
-Tests/ArgParser.Features.Tests.ps1
-Tests/ArgParser.Intergration.Tests.ps1
+Tests/argparser.Module.Tests.ps1
+Tests/argparser.Features.Tests.ps1
+Tests/argparser.Intergration.Tests.ps1
 Tests/Resources/Test-GitHubScript.ps1
 .env
 Pipfile.lock
